@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoServer Web App</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@latest/ol.css" type="text/css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        #header {
+            background-color: #3498db;
+            color: white;
+            padding: 1rem;
+            text-align: center;
+        }
+        #map {
+            height: 500px;
+            width: 100%;
+        }
+        #controls {
+            padding: 1rem;
+            background-color: #f5f5f5;
+        }
+        #layerList {
+            margin-top: 1rem;
+        }
+        .layer-item {
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>GeoServer Web App</h1>
+    </div>
+    
+    <div id="controls">
+        <div>
+            <label for="geoserverUrl">GeoServer URL:</label>
+            <input type="text" id="geoserverUrl" value="http://localhost:8080/geoserver" size="40">
+            <button onclick="loadCapabilities()">Connect</button>
+        </div>
+        
+        <div id="workspaceSelector" style="display: none; margin-top: 1rem;">
+            <label for="workspace">Workspace:</label>
+            <select id="workspace" onchange="filterLayers()"></select>
+        </div>
+        
+        <div id="layerList"></div>
+    </div>
+    
+    <div id="map"></div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/ol@latest/dist/ol.js"></script>
+    <script>
+        // Variables to store Geoserver information
+        let geoserverUrl = '';
+        let currentWorkspace = '';
+        let activeLayers = [];
+        let allLayers = [];
+        let map;
+        
+        // Initialize map after the page has loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize map
+            map = new ol.Map({
+                target: 'map',
+                layers: [
+                    new ol.layer.Tile({
+                        source: new ol.source.OSM()
+                    })
+                ],
+                view: new ol.View({
+                    center: ol.proj.fromLonLat([0, 0]),
+                    zoom: 2
+                })
+            });
+        });
+        
+        // Function to load capabilities from GeoServer using WMS GetCapabilities
+        async function loadCapabilities() {
+            try {
+                // Get the GeoServer URL from the input field
+                const serverUrl = document.getElementById('geoserverUrl').value;
+                
+                // Ensure URL doesn't end with a slash
+                geoserverUrl = serverUrl.endsWith('/') ? serverUrl.slice(0, -1) : serverUrl;
+                
+                // Use WMS GetCapabilities instead of REST API
+                const response = await fetch(`${geoserverUrl}/wms?service=WMS&version=1.3.0&request=GetCapabilities`);
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to connect to GeoServer: ${response.statusText}`);
+                }
+                
+                const text = await response.text();
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(text, "text/xml");
+                
+                console.log("GetCapabilities response parsed successfully");
+                
+                // Extract layers from GetCapabilities response
+                const layerElements = xmlDoc.getElementsByTagName('Layer');
+                allLayers = [];
+                const workspaces = new Set();
+                
+                // Start from index 1 to skip the root Layer element
+                for (let i = 1; i < layerElements.length; i++) {
+                    const nameEl = layerElements[i].getElementsByTagName('Name')[0];
+                    const titleEl = layerElements[i].getElementsByTagName('Title')[0];
+                    
+                    if (nameEl && nameEl.textContent) {
+                        const name = nameEl.textContent;
+                        const title = titleEl ? titleEl.textContent : name;
+                        
+                        if (name.includes(':')) {
+                            const workspace = name.split(':')[0];
+                            const layerName = name.split(':')[1];
+                            workspaces.add(workspace);
+                            
+                            allLayers.push({
+                                fullName: name,
+                                workspace: workspace,
+                                name: layerName,
+                                title: title
+                            });
+                        }
+                    }
+                }
+                
+                console.log(`Found ${workspaces.size} workspaces and ${allLayers.length} layers`);
+                
+                // Populate workspace dropdown
+                const workspaceSelect = document.getElementById('workspace');
+                workspaceSelect.innerHTML = '';
+                
+                // Add "All Workspaces" option
+                const allOption = document.createElement('option');
+                allOption.value = '';
+                allOption.textContent = 'All Workspaces';
+                workspaceSelect.appendChild(allOption);
+                
+                // Add each workspace as an option
+                Array.from(workspaces).sort().forEach(workspace => {
+                    const option = document.createElement('option');
+                    option.value = workspace;
+                    option.textContent = workspace;
+                    workspaceSelect.appendChild(option);
+                });
+                
+                document.getElementById('workspaceSelector').style.display = 'block';
+                
+                // Show all layers initially
+                filterLayers();
+                
+            } catch (error) {
+                console.error('Error loading capabilities:', error);
+                alert(`Failed to connect to GeoServer: ${error.message}`);
+            }
+        }
+        
+        // Function to filter layers by selected workspace
+        function filterLayers() {
+            currentWorkspace = document.getElementById('workspace').value;
+            const layerListEl = document.getElementById('layerList');
+            layerListEl.innerHTML = '<h3>Available Layers:</h3>';
+            
+            // Filter layers by workspace or show all if no workspace selected
+            const filteredLayers = currentWorkspace ? 
+                allLayers.filter(layer => layer.workspace === currentWorkspace) : 
+                allLayers;
+            
+            if (filteredLayers.length > 0) {
+                filteredLayers.forEach(layer => {
+                    const layerDiv = document.createElement('div');
+                    layerDiv.className = 'layer-item';
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.id = `layer-${layer.fullName}`;
+                    checkbox.value = layer.fullName;
+                    checkbox.onchange = function() { toggleLayer(this); };
+                    
+                    const label = document.createElement('label');
+                    label.htmlFor = `layer-${layer.fullName}`;
+                    label.textContent = layer.title || layer.name;
+                    
+                    layerDiv.appendChild(checkbox);
+                    layerDiv.appendChild(label);
+                    layerListEl.appendChild(layerDiv);
+                });
+            } else {
+                layerListEl.innerHTML += '<p>No layers found in this workspace</p>';
+            }
+        }
+        
+        // Function to toggle a layer on/off
+        function toggleLayer(checkbox) {
+            const layerName = checkbox.value;
+            
+            if (checkbox.checked) {
+                // Add layer to map
+                const newLayer = new ol.layer.Tile({
+                    source: new ol.source.TileWMS({
+                        url: `${geoserverUrl}/wms`,
+                        params: {
+                            'LAYERS': layerName,
+                            'TILED': true
+                        },
+                        serverType: 'geoserver'
+                    }),
+                    title: layerName
+                });
+                
+                map.addLayer(newLayer);
+                activeLayers.push({ name: layerName, layer: newLayer });
+                console.log(`Added layer: ${layerName}`);
+            } else {
+                // Remove layer from map
+                const layerIndex = activeLayers.findIndex(l => l.name === layerName);
+                if (layerIndex >= 0) {
+                    map.removeLayer(activeLayers[layerIndex].layer);
+                    activeLayers.splice(layerIndex, 1);
+                    console.log(`Removed layer: ${layerName}`);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
