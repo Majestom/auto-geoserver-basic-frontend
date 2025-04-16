@@ -12,7 +12,7 @@
             padding: 0;
         }
         #header {
-            background-color: #3498db;
+            background-color: #3F0731;
             color: white;
             padding: 1rem;
             text-align: center;
@@ -138,10 +138,10 @@
                 const workspaceSelect = document.getElementById('workspace');
                 workspaceSelect.innerHTML = '';
                 
-                // Add "All Workspaces" option
+                // Add "Select a Workspace" option
                 const allOption = document.createElement('option');
                 allOption.value = '';
-                allOption.textContent = 'All Workspaces';
+                allOption.textContent = 'Select a Workspace';
                 workspaceSelect.appendChild(allOption);
                 
                 // Add each workspace as an option
@@ -167,34 +167,55 @@
         function filterLayers() {
             currentWorkspace = document.getElementById('workspace').value;
             const layerListEl = document.getElementById('layerList');
-            layerListEl.innerHTML = '<h3>Available Layers:</h3>';
             
-            // Filter layers by workspace or show all if no workspace selected
-            const filteredLayers = currentWorkspace ? 
-                allLayers.filter(layer => layer.workspace === currentWorkspace) : 
-                allLayers;
+            // Clear the layer list
+            layerListEl.innerHTML = '';
             
-            if (filteredLayers.length > 0) {
-                filteredLayers.forEach(layer => {
-                    const layerDiv = document.createElement('div');
-                    layerDiv.className = 'layer-item';
-                    
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.id = `layer-${layer.fullName}`;
-                    checkbox.value = layer.fullName;
-                    checkbox.onchange = function() { toggleLayer(this); };
-                    
-                    const label = document.createElement('label');
-                    label.htmlFor = `layer-${layer.fullName}`;
-                    label.textContent = layer.title || layer.name;
-                    
-                    layerDiv.appendChild(checkbox);
-                    layerDiv.appendChild(label);
-                    layerListEl.appendChild(layerDiv);
-                });
+            // Only show layers if a specific workspace is selected
+            if (currentWorkspace) {
+                layerListEl.innerHTML = '<h3>Available Layers in ' + currentWorkspace + ':</h3>';
+                
+                // Filter layers by the selected workspace
+                const filteredLayers = allLayers.filter(layer => layer.workspace === currentWorkspace);
+                
+                if (filteredLayers.length > 0) {
+                    filteredLayers.forEach(layer => {
+                        const layerDiv = document.createElement('div');
+                        layerDiv.className = 'layer-item';
+                        
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.id = `layer-${layer.fullName}`;
+                        checkbox.value = layer.fullName;
+                        checkbox.onchange = function() { toggleLayer(this); };
+                        
+                        const label = document.createElement('label');
+                        label.htmlFor = `layer-${layer.fullName}`;
+                        label.textContent = layer.title || layer.name;
+                        
+                        layerDiv.appendChild(checkbox);
+                        layerDiv.appendChild(label);
+                        layerListEl.appendChild(layerDiv);
+                    });
+                } else {
+                    layerListEl.innerHTML += '<p>No layers found in this workspace</p>';
+                }
             } else {
-                layerListEl.innerHTML += '<p>No layers found in this workspace</p>';
+                // If "All Workspaces" is selected (empty value), show instructions
+                layerListEl.innerHTML = '<h3>Workspaces Available</h3>';
+                layerListEl.innerHTML += '<p>Please select a specific workspace to view its layers</p>';
+                
+                // Show list of available workspaces as a reference
+                const workspaces = new Set(allLayers.map(layer => layer.workspace));
+                if (workspaces.size > 0) {
+                    const workspaceList = document.createElement('ul');
+                    Array.from(workspaces).sort().forEach(workspace => {
+                        const wsItem = document.createElement('li');
+                        wsItem.textContent = workspace;
+                        workspaceList.appendChild(wsItem);
+                    });
+                    layerListEl.appendChild(workspaceList);
+                }
             }
         }
         
